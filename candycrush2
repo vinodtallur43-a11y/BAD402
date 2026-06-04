@@ -1,0 +1,205 @@
+import tkinter as tk
+from tkinter import messagebox
+import random
+
+# --- CONFIGURATION & CONSTANTS ---
+GRID_SIZE = 8
+INITIAL_MOVES = 19
+
+# Theme Colors (Dark Theme matching the image layout)
+COLOR_BG = "#1a1c1e"
+COLOR_PANEL = "#2d3135"
+COLOR_BOARD_BG = "#111215"
+COLOR_TEXT = "#ffffff"
+COLOR_TEXT_MUTED = "#aaaaaa"
+COLOR_SELECT = "#bf5af2"
+
+# Visual Shape mapping using cross-platform Unicode symbols
+SHAPE_MAP = {
+    0: {"char": "🔴", "color": "#ff453a"},  # Red Circle
+    1: {"char": "🟧", "color": "#ff9f0a"},  # Orange Square
+    2: {"char": "🔷", "color": "#30d158"},  # Green (Using Blue Diamond as standard emoji variant)
+    3: {"char": "⬡", "color": "#ffd60a"},   # Yellow Hexagon outline
+    4: {"char": "🔺", "color": "#0a84ff"},  # Blue Triangle
+    5: {"char": "⭐", "color": "#bf5af2"}   # Purple Star
+}
+NUM_SHAPES = len(SHAPE_MAP)
+
+class Match3Tkinter:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Match-3 Shape Game")
+        self.root.configure(bg=COLOR_BG)
+        self.root.geometry("460x600")
+        self.root.resizable(False, False)
+
+        self.score = 0
+        self.moves_left = INITIAL_MOVES
+        self.selected_tile = None  # Stores (row, col)
+        
+        # Internal logical matrix grid
+        self.grid_data = [[None for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
+        # UI Button matrix grid
+        self.buttons = [[None for _ in range(GRID_SIZE)] for _ in range(GRID_SIZE)]
+
+        self.setup_ui()
+        self.generate_initial_board()
+        self.update_board_display()
+
+    def setup_ui(self):
+        """Creates the layout structure including top header stats and main grid board."""
+        # --- Top Header Panel ---
+        self.header_frame = tk.Frame(self.root, bg=COLOR_BG, pady=15)
+        self.header_frame.pack(fill=tk.X, padx=30)
+
+        # Score Box
+        self.score_box = tk.Frame(self.header_frame, bg=COLOR_PANEL, bd=0, width=180, height=70)
+        self.score_box.pack_propagate(False)
+        self.score_box.pack(side=tk.LEFT, expand=True, padx=10)
+        
+        tk.Label(self.score_box, text="SCORE", bg=COLOR_PANEL, fg=COLOR_TEXT_MUTED, font=("Arial", 10, "bold")).pack(pady=(8,0))
+        self.score_label = tk.Label(self.score_box, text="0", bg=COLOR_PANEL, fg=COLOR_TEXT, font=("Arial", 22, "bold"))
+        self.score_label.pack()
+
+        # Moves Box
+        self.moves_box = tk.Frame(self.header_frame, bg=COLOR_PANEL, bd=0, width=180, height=70)
+        self.moves_box.pack_propagate(False)
+        self.moves_box.pack(side=tk.RIGHT, expand=True, padx=10)
+
+        tk.Label(self.moves_box, text="MOVES LEFT", bg=COLOR_PANEL, fg=COLOR_TEXT_MUTED, font=("Arial", 10, "bold")).pack(pady=(8,0))
+        self.moves_label = tk.Label(self.moves_box, text=str(self.moves_left), bg=COLOR_PANEL, fg=COLOR_TEXT, font=("Arial", 22, "bold"))
+        self.moves_label.pack()
+
+        # --- Main Grid Board Container ---
+        self.board_container = tk.Frame(self.root, bg=COLOR_BOARD_BG, padx=10, pady=10, bd=0)
+        self.board_container.pack(pady=10)
+
+        # Generate Tkinter Button Array
+        for r in range(GRID_SIZE):
+            for c in range(GRID_SIZE):
+                btn = tk.Button(
+                    self.board_container,
+                    font=("Arial", 20),
+                    width=2,
+                    height=1,
+                    bd=0,
+                    highlightthickness=0,
+                    activebackground="#25282c",
+                    command=lambda row=r, col=c: self.handle_tile_click(row, col)
+                )
+                btn.grid(row=r, column=c, padx=3, pady=3)
+                self.buttons[r][c] = btn
+
+    def generate_initial_board(self):
+        """Populates data array minimizing instant match configurations."""
+        for r in range(GRID_SIZE):
+            for c in range(GRID_SIZE):
+                while True:
+                    shape = random.randint(0, NUM_SHAPES - 1)
+                    if c >= 2 and self.grid_data[r][c-1] == shape and self.grid_data[r][c-2] == shape:
+                        continue
+                    if r >= 2 and self.grid_data[r-1][c] == shape and self.grid_data[r-2][c] == shape:
+                        continue
+                    self.grid_data[r][c] = shape
+                    break
+
+    def update_board_display(self):
+        """Syncs the Tkinter UI elements with the backend grid matrix state."""
+        for r in range(GRID_SIZE):
+            for c in range(GRID_SIZE):
+                val = self.grid_data[r][c]
+                if val is not None:
+                    shape_info = SHAPE_MAP[val]
+                    self.buttons[r][c].config(
+                        text=shape_info["char"],
+                        fg=shape_info["color"],
+                        bg="#22252a"
+                    )
+                else:
+                    self.buttons[r][c].config(text="", bg=COLOR_BOARD_BG)
+                
+                # Maintain Selection highlights
+                if self.selected_tile == (r, c):
+                    self.buttons[r][c].config(bg=COLOR_SELECT)
+
+    # --- SWAP & MATCH LOGIC ENGINE ---
+    def handle_tile_click(self, r, c):
+        if self.moves_left <= 0:
+            return
+
+        if self.selected_tile is None:
+            self.selected_tile = (r, c)
+            self.update_board_display()
+        else:
+            r1, c1 = self.selected_tile
+            self.selected_tile = None
+
+            # Verify proximity conditions (Up, Down, Left, Right)
+            if abs(r1 - r) + abs(c1 - c) == 1:
+                # Perform trial swap
+                self.grid_data[r1][c1], self.grid_data[r][c] = self.grid_data[r][c], self.grid_data[r1][c1]
+                self.moves_left -= 1
+                
+                if self.process_matches():
+                    self.moves_label.config(text=str(self.moves_left))
+                    self.score_label.config(text=str(self.score))
+                else:
+                    # Revert invalid swap configurations
+                    self.grid_data[r1][c1], self.grid_data[r][c] = self.grid_data[r][c], self.grid_data[r1][c1]
+                    self.moves_left += 1
+
+            self.update_board_display()
+            self.check_game_over()
+
+    def find_matches(self):
+        matched_coords = set()
+        # Scan Horizontals
+        for r in range(GRID_SIZE):
+            for c in range(GRID_SIZE - 2):
+                if self.grid_data[r][c] is not None and self.grid_data[r][c] == self.grid_data[r][c+1] == self.grid_data[r][c+2]:
+                    matched_coords.update([(r, c), (r, c+1), (r, c+2)])
+        # Scan Verticals
+        for c in range(GRID_SIZE):
+            for r in range(GRID_SIZE - 2):
+                if self.grid_data[r][c] is not None and self.grid_data[r][c] == self.grid_data[r+1][c] == self.grid_data[r+2][c]:
+                    matched_coords.update([(r, c), (r+1, c), (r+2, c)])
+        return list(matched_coords)
+
+    def process_matches(self):
+        matches = self.find_matches()
+        if not matches:
+            return False
+
+        while matches:
+            self.score += len(matches) * 10
+            
+            # Wipe matches out
+            for (r, c) in matches:
+                self.grid_data[r][c] = None
+
+            # Apply gravity drops downward
+            for c in range(GRID_SIZE):
+                empty_slots = 0
+                for r in range(GRID_SIZE - 1, -1, -1):
+                    if self.grid_data[r][c] is None:
+                        empty_slots += 1
+                    elif empty_slots > 0:
+                        self.grid_data[r + empty_slots][c] = self.grid_data[r][c]
+                        self.grid_data[r][c] = None
+                
+                # Fill vacancies from top
+                for r in range(empty_slots):
+                    self.grid_data[r][c] = random.randint(0, NUM_SHAPES - 1)
+
+            matches = self.find_matches()
+        return True
+
+    def check_game_over(self):
+        if self.moves_left <= 0:
+            messagebox.showinfo("Game Over", f"No moves left!\nFinal Score: {self.score}")
+            self.root.quit()
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = Match3Tkinter(root)
+    root.mainloop()
